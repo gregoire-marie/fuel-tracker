@@ -83,6 +83,24 @@ def build_trip_input(
     return trip
 
 
+def save_trip_from_form(database: TripDatabase) -> None:
+    """Persist the values submitted by the new-trip form.
+
+    Args:
+        database: Trip repository receiving the submitted record.
+    """
+    trip = build_trip_input(
+        st.session_state["new_trip_date"],
+        st.session_state["new_trip_distance_km"],
+        st.session_state["new_trip_avg_speed_kmh"],
+        st.session_state["new_trip_avg_consumption"],
+        st.session_state["new_trip_fuel_price"],
+        st.session_state["new_trip_notes"],
+    )
+    trip_id = database.insert_trip(trip)
+    st.session_state["trip_save_message"] = f"Trip #{trip_id} saved."
+
+
 def render_trip_form(database: TripDatabase) -> None:
     """Render the trip-entry form and persist submitted records.
 
@@ -93,12 +111,22 @@ def render_trip_form(database: TripDatabase) -> None:
     with st.form("new_trip", clear_on_submit=True):
         first, second = st.columns(2)
         with first:
-            trip_date = st.date_input("Trip date", value=date.today())
+            trip_date = st.date_input(
+                "Trip date", value=date.today(), key="new_trip_date"
+            )
             distance_km = st.number_input(
-                "Length [km]", min_value=0.1, value=40.0, step=1.0
+                "Length [km]",
+                min_value=0.1,
+                value=40.0,
+                step=1.0,
+                key="new_trip_distance_km",
             )
             avg_speed_kmh = st.number_input(
-                "Average speed [km/h]", min_value=0.1, value=70.0, step=1.0
+                "Average speed [km/h]",
+                min_value=0.1,
+                value=70.0,
+                step=1.0,
+                key="new_trip_avg_speed_kmh",
             )
         with second:
             avg_consumption = st.number_input(
@@ -106,6 +134,7 @@ def render_trip_form(database: TripDatabase) -> None:
                 min_value=0.1,
                 value=7.0,
                 step=0.1,
+                key="new_trip_avg_consumption",
             )
             fuel_price = st.number_input(
                 "Approximate fuel price [€/L]",
@@ -113,8 +142,11 @@ def render_trip_form(database: TripDatabase) -> None:
                 value=1.80,
                 step=0.01,
                 format="%.3f",
+                key="new_trip_fuel_price",
             )
-            notes = st.text_input("Notes", placeholder="Optional")
+            notes = st.text_input(
+                "Notes", placeholder="Optional", key="new_trip_notes"
+            )
 
         preview = build_trip_input(
             trip_date,
@@ -135,11 +167,15 @@ def render_trip_form(database: TripDatabase) -> None:
             "Estimated duration", format_duration(metrics.duration_hours)
         )
 
-        submitted = st.form_submit_button("Save trip", type="primary")
-        if submitted:
-            trip_id = database.insert_trip(preview)
-            st.success(f"Trip #{trip_id} saved.")
-            st.rerun()
+        st.form_submit_button(
+            "Save trip",
+            type="primary",
+            on_click=save_trip_from_form,
+            args=(database,),
+        )
+
+    if save_message := st.session_state.pop("trip_save_message", None):
+        st.success(save_message)
 
 
 def render_summary_cards(dataframe: pd.DataFrame) -> None:
@@ -210,7 +246,7 @@ def render_speed_consumption_chart(dataframe: pd.DataFrame) -> None:
             )
         )
     figure.update_layout(legend_title_text="")
-    st.plotly_chart(figure, use_container_width=True)
+    st.plotly_chart(figure, width="stretch")
 
 
 def render_time_series(dataframe: pd.DataFrame) -> None:
@@ -254,8 +290,8 @@ def render_time_series(dataframe: pd.DataFrame) -> None:
     )
 
     left, right = st.columns(2)
-    left.plotly_chart(consumption_figure, use_container_width=True)
-    right.plotly_chart(cumulative_figure, use_container_width=True)
+    left.plotly_chart(consumption_figure, width="stretch")
+    right.plotly_chart(cumulative_figure, width="stretch")
 
 
 def render_grouped_statistics(dataframe: pd.DataFrame) -> None:
@@ -304,8 +340,8 @@ def render_grouped_statistics(dataframe: pd.DataFrame) -> None:
     )
 
     left, right = st.columns(2)
-    left.plotly_chart(speed_figure, use_container_width=True)
-    right.plotly_chart(monthly_figure, use_container_width=True)
+    left.plotly_chart(speed_figure, width="stretch")
+    right.plotly_chart(monthly_figure, width="stretch")
 
     eligible = speed_summary[speed_summary["trip_count"] >= 3]
     if not eligible.empty:
@@ -353,7 +389,7 @@ def render_heatmap(dataframe: pd.DataFrame) -> None:
         xaxis_title="Average-speed band [km/h]",
         yaxis_title="Trip-length band [km]",
     )
-    st.plotly_chart(figure, use_container_width=True)
+    st.plotly_chart(figure, width="stretch")
 
 
 def render_dashboard(dataframe: pd.DataFrame) -> None:
@@ -400,22 +436,115 @@ def render_trip_log(database: TripDatabase, dataframe: pd.DataFrame) -> None:
         "notes": "Notes",
     }
     table = dataframe[list(display_columns)].rename(columns=display_columns)
-    st.dataframe(
-        table.sort_values(["Date", "ID"], ascending=False),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Date": st.column_config.DateColumn(format="YYYY-MM-DD"),
-            "Distance [km]": st.column_config.NumberColumn(format="%.1f"),
-            "Avg speed [km/h]": st.column_config.NumberColumn(format="%.1f"),
-            "Consumption [L/100 km]": st.column_config.NumberColumn(format="%.2f"),
-            "Fuel price [€/L]": st.column_config.NumberColumn(format="%.3f"),
-            "Fuel used [L]": st.column_config.NumberColumn(format="%.2f"),
-            "Trip cost [€]": st.column_config.NumberColumn(format="%.2f"),
-            "Cost [€/100 km]": st.column_config.NumberColumn(format="%.2f"),
-            "Duration [h]": st.column_config.NumberColumn(format="%.2f"),
+    # Render this table as sanitized HTML below instead of using Streamlit's
+    # PyArrow IPC path, which segfaults on reruns with Python 3.14 on macOS.
+    table["Date"] = table["Date"].dt.strftime("%Y-%m-%d")
+    table = table.sort_values(["Date", "ID"], ascending=False)
+    table_html = table.to_html(
+        index=False,
+        border=0,
+        escape=True,
+        classes="trip-log-table",
+        justify="left",
+        formatters={
+            "Distance [km]": lambda value: f"{value:.1f}",
+            "Avg speed [km/h]": lambda value: f"{value:.1f}",
+            "Consumption [L/100 km]": lambda value: f"{value:.2f}",
+            "Fuel price [€/L]": lambda value: f"{value:.3f}",
+            "Fuel used [L]": lambda value: f"{value:.2f}",
+            "Trip cost [€]": lambda value: f"{value:.2f}",
+            "Cost [€/100 km]": lambda value: f"{value:.2f}",
+            "Duration [h]": lambda value: f"{value:.2f}",
         },
     )
+    is_dark = st.context.theme.type == "dark"
+    colors = {
+        "surface": "#111827" if is_dark else "#ffffff",
+        "header": "#1f2937" if is_dark else "#f8fafc",
+        "stripe": "#172033" if is_dark else "#f8fafc",
+        "hover": "#1e3a5f" if is_dark else "#eff6ff",
+        "border": "#374151" if is_dark else "#e2e8f0",
+        "text": "#e5e7eb" if is_dark else "#1e293b",
+        "muted": "#9ca3af" if is_dark else "#64748b",
+        "accent": "#60a5fa" if is_dark else "#2563eb",
+        "shadow": "rgba(0, 0, 0, 0.28)" if is_dark else "rgba(15, 23, 42, 0.08)",
+    }
+    styled_table = f"""
+        <style>
+            .trip-log-shell {{
+                max-height: 34rem;
+                overflow: auto;
+                overscroll-behavior: contain;
+                border: 1px solid {colors["border"]};
+                border-radius: 0.75rem;
+                background: {colors["surface"]};
+                box-shadow: 0 1px 2px {colors["shadow"]};
+            }}
+            .trip-log-table {{
+                width: 100%;
+                min-width: 72rem;
+                border-collapse: separate;
+                border-spacing: 0;
+                color: {colors["text"]};
+                font-size: 0.875rem;
+                line-height: 1.35;
+            }}
+            .trip-log-table thead th {{
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                padding: 0.75rem 0.875rem;
+                border-bottom: 1px solid {colors["border"]};
+                background: {colors["header"]};
+                color: {colors["muted"]};
+                font-size: 0.75rem;
+                font-weight: 650;
+                letter-spacing: 0.025em;
+                text-align: left;
+                text-transform: uppercase;
+                white-space: nowrap;
+            }}
+            .trip-log-table tbody td {{
+                padding: 0.72rem 0.875rem;
+                border-bottom: 1px solid {colors["border"]};
+                background: {colors["surface"]};
+                vertical-align: middle;
+                white-space: nowrap;
+            }}
+            .trip-log-table tbody tr:nth-child(even) td {{
+                background: {colors["stripe"]};
+            }}
+            .trip-log-table tbody tr:hover td {{
+                background: {colors["hover"]};
+            }}
+            .trip-log-table tbody tr:last-child td {{
+                border-bottom: 0;
+            }}
+            .trip-log-table th:nth-child(1),
+            .trip-log-table th:nth-child(n+3):nth-child(-n+10),
+            .trip-log-table td:nth-child(1),
+            .trip-log-table td:nth-child(n+3):nth-child(-n+10) {{
+                text-align: right;
+                font-variant-numeric: tabular-nums;
+            }}
+            .trip-log-table td:first-child {{
+                color: {colors["accent"]};
+                font-weight: 650;
+            }}
+            .trip-log-table td:nth-child(2) {{
+                font-weight: 550;
+            }}
+            .trip-log-table th:last-child,
+            .trip-log-table td:last-child {{
+                min-width: 14rem;
+                white-space: normal;
+            }}
+        </style>
+        <div class="trip-log-shell">{table_html}</div>
+    """
+    trip_label = "trip" if len(table) == 1 else "trips"
+    st.caption(f"{len(table)} {trip_label} · newest first")
+    st.html(styled_table)
 
     csv_bytes = dataframe.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -476,13 +605,19 @@ def render_trip_log(database: TripDatabase, dataframe: pd.DataFrame) -> None:
             st.success(f"Trip #{selected_id} updated.")
             st.rerun()
 
-    confirm_delete = st.checkbox(
-        f"I confirm that trip #{selected_id} should be deleted."
-    )
-    if st.button("Delete selected trip", disabled=not confirm_delete):
-        database.delete_trip(int(selected_id))
-        st.success(f"Trip #{selected_id} deleted.")
-        st.rerun()
+    with st.form("delete_trip"):
+        confirm_delete = st.checkbox(
+            f"I confirm that trip #{selected_id} should be deleted."
+        )
+        delete_trip = st.form_submit_button("Delete selected trip")
+
+    if delete_trip:
+        if not confirm_delete:
+            st.warning("Confirm the deletion before deleting the trip.")
+        else:
+            database.delete_trip(int(selected_id))
+            st.success(f"Trip #{selected_id} deleted.")
+            st.rerun()
 
 
 def render_sidebar_filters(dataframe: pd.DataFrame) -> tuple[date | None, date | None]:
@@ -524,6 +659,7 @@ def main() -> None:
     )
 
     database = get_database()
+
     all_trips = database.fetch_trips()
 
     if all_trips.empty:
