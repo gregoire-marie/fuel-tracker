@@ -22,7 +22,7 @@ from models import TripInput, compute_trip_metrics
 
 APP_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = Path(
-    os.environ.get("FUEL_TRACKER_DB", APP_DIR / "fuel_trips.db")
+    os.environ.get("FUEL_TRACKER_DB", APP_DIR / "trips.db")
 )
 
 

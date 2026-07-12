@@ -38,7 +38,7 @@ The SQLite database is created automatically as `fuel_trips.db` in the project d
 Set the `FUEL_TRACKER_DB` environment variable to use another location:
 
 ```bash
-FUEL_TRACKER_DB=/path/to/fuel_trips.db streamlit run app.py
+FUEL_TRACKER_DB=/path/to/trips.db streamlit run app.py
 ```
 
 ## Stored schema
