@@ -1,27 +1,10 @@
 # Fuel Trip Tracker
 
-A local Streamlit application that stores car trips in SQLite and computes:
-
-- Fuel used: `distance × consumption / 100`
-- Trip fuel cost: `fuel used × fuel price`
-- Cost per 100 km
-- Estimated trip duration
+A local Streamlit app that helps store car trips and find the least fuel-consuming speed for your daily commute:
 
 ## Demo
 
 ![Fuel Trip Tracker demo](docs/assets/demo.gif)
-
-The dashboard includes:
-
-- Aggregate distance, fuel, cost, consumption, price, and driving-time metrics
-- Average speed versus consumption scatter plot with a quadratic descriptive fit
-- Consumption history and five-trip moving average
-- Cumulative fuel spending
-- Monthly cost totals
-- Distance-weighted consumption by speed band
-- Speed-band and trip-length heatmap
-- Date filtering and CSV export
-- Record editing and deletion
 
 ## Run locally
 
@@ -45,7 +28,7 @@ Set the `FUEL_TRACKER_DB` environment variable to use another location:
 FUEL_TRACKER_DB=/path/to/trips.db streamlit run app.py
 ```
 
-## Stored schema
+## Database schema
 
 Each trip stores the entered date, distance, average speed, average consumption,
 approximate fuel price, and notes. It also stores the derived duration, fuel used,
@@ -54,5 +37,17 @@ trip cost, and cost per 100 km. Derived values are recomputed when a trip is edi
 ## Interpretation warning
 
 The speed-consumption plots are observational. Average speed is correlated with route
-type, traffic, gradients, weather, vehicle load, tyre pressure, and driving style. The
+type, traffic, gradients, weather, vehicle load, tire pressure, and driving style. The
 quadratic fit and speed-band summaries should not be interpreted as causal estimates.
+
+The dashboard includes:
+
+- Aggregate distance, fuel, cost, consumption, price, and driving-time metrics
+- Average speed versus consumption scatter plot with a quadratic descriptive fit
+- Consumption history and five-trip moving average
+- Cumulative fuel spending
+- Monthly cost totals
+- Distance-weighted consumption by speed band
+- Speed-band and trip-length heatmap
+- Date filtering and CSV export
+- Record editing and deletion
