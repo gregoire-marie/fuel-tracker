@@ -388,53 +388,105 @@ def render_grouped_statistics(dataframe: pd.DataFrame) -> None:
     left.plotly_chart(speed_figure, width="stretch")
     right.plotly_chart(monthly_figure, width="stretch")
 
-    eligible = speed_summary[speed_summary["trip_count"] >= 3]
-    if not eligible.empty:
-        best = eligible.loc[
-            eligible["weighted_consumption_l_per_100km"].idxmin()
-        ]
-        st.info(
-            "Most efficient observed speed band with at least three trips: "
-            f"{best['speed_band']} km/h at "
-            f"{best['weighted_consumption_l_per_100km']:.2f} L/100 km. "
-            "This is descriptive, not causal: route, traffic, elevation, weather, "
-            "load, and driving style are not controlled."
-        )
+    render_operating_map(dataframe)
 
 
-def render_heatmap(dataframe: pd.DataFrame) -> None:
-    """Render mean consumption across speed and distance bands.
+def render_operating_map(dataframe: pd.DataFrame) -> None:
+    """Render observed operating conditions and mark the lowest consumption.
 
     Args:
-        dataframe: Enriched trip records containing categorical bands.
+        dataframe: Enriched trip records containing speed, distance, and consumption.
     """
-    pivot = dataframe.pivot_table(
-        index="distance_band",
-        columns="speed_band",
-        values="avg_consumption_l_per_100km",
-        aggfunc="mean",
-        observed=True,
+    optimum = dataframe.loc[
+        dataframe["avg_consumption_l_per_100km"].idxmin()
+    ]
+    minimum_consumption = float(
+        dataframe["avg_consumption_l_per_100km"].min()
     )
-    if pivot.empty:
-        return
-    figure = go.Figure(
-        data=go.Heatmap(
-            z=pivot.to_numpy(),
-            x=[str(value) for value in pivot.columns],
-            y=[str(value) for value in pivot.index],
-            colorbar={"title": "L/100 km"},
+    maximum_consumption = float(
+        dataframe["avg_consumption_l_per_100km"].max()
+    )
+    if maximum_consumption == minimum_consumption:
+        maximum_consumption = minimum_consumption + 0.01
+
+    trip_dates = dataframe["trip_date"].dt.strftime("%Y-%m-%d")
+    custom_data = list(
+        zip(dataframe["id"].astype(str), trip_dates, strict=True)
+    )
+    outline_color = "#f8fafc" if st.context.theme.type == "dark" else "#0f172a"
+
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatter(
+            x=dataframe["avg_speed_kmh"],
+            y=dataframe["distance_km"],
+            mode="markers",
+            name="Recorded trips",
+            customdata=custom_data,
+            marker={
+                "size": 11,
+                "color": dataframe["avg_consumption_l_per_100km"],
+                "colorscale": "RdYlGn_r",
+                "cmin": minimum_consumption,
+                "cmax": maximum_consumption,
+                "colorbar": {"title": "Consumption<br>[L/100 km]"},
+                "line": {"color": outline_color, "width": 1},
+                "opacity": 0.9,
+            },
             hovertemplate=(
-                "Speed: %{x} km/h<br>Distance: %{y} km"
-                "<br>Mean consumption: %{z:.2f} L/100 km<extra></extra>"
+                "Trip #%{customdata[0]} · %{customdata[1]}"
+                "<br>Average speed: %{x:.1f} km/h"
+                "<br>Distance: %{y:.1f} km"
+                "<br>Consumption: %{marker.color:.2f} L/100 km"
+                "<extra></extra>"
+            ),
+        )
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=[float(optimum["avg_speed_kmh"])],
+            y=[float(optimum["distance_km"])],
+            mode="markers+text",
+            name="Lowest observed consumption",
+            text=[f"{float(optimum['avg_consumption_l_per_100km']):.2f} L/100 km"],
+            textposition="top center",
+            cliponaxis=False,
+            marker={
+                "symbol": "star",
+                "size": 22,
+                "color": [float(optimum["avg_consumption_l_per_100km"])],
+                "colorscale": "RdYlGn_r",
+                "cmin": minimum_consumption,
+                "cmax": maximum_consumption,
+                "showscale": False,
+                "line": {"color": outline_color, "width": 2},
+            },
+            hovertemplate=(
+                "Lowest observed consumption"
+                f"<br>Trip #{int(optimum['id'])}"
+                "<br>Average speed: %{x:.1f} km/h"
+                "<br>Distance: %{y:.1f} km"
+                f"<br>Consumption: "
+                f"{float(optimum['avg_consumption_l_per_100km']):.2f} L/100 km"
+                "<extra></extra>"
             ),
         )
     )
     figure.update_layout(
-        title="Mean consumption heatmap",
-        xaxis_title="Average-speed band [km/h]",
-        yaxis_title="Trip-length band [km]",
+        title="Observed operating map",
+        xaxis_title="Average speed [km/h]",
+        yaxis_title="Trip distance [km]",
+        legend={"orientation": "h", "y": 1.12, "x": 0},
+        margin={"t": 105},
     )
     st.plotly_chart(figure, width="stretch")
+    st.caption(
+        "The star marks the recorded trip with the lowest consumption: "
+        f"{float(optimum['avg_consumption_l_per_100km']):.2f} L/100 km at "
+        f"{float(optimum['avg_speed_kmh']):.1f} km/h over "
+        f"{float(optimum['distance_km']):.1f} km. Here, ‘optimal’ means lowest "
+        "observed fuel consumption—not a universal or causal mechanical optimum."
+    )
 
 
 def render_dashboard(dataframe: pd.DataFrame) -> None:
@@ -452,7 +504,6 @@ def render_dashboard(dataframe: pd.DataFrame) -> None:
     render_speed_consumption_chart(enriched)
     render_time_series(enriched)
     render_grouped_statistics(enriched)
-    render_heatmap(enriched)
 
 
 def render_trip_log(database: TripDatabase, dataframe: pd.DataFrame) -> None:

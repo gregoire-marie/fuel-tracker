@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -173,3 +174,36 @@ def test_database_reset_flow(
     assert database.fetch_trips().empty
     assert any("Database reset" in message.value for message in app.success)
     assert database.insert_trip(make_trip()) == 1
+
+
+def test_operating_map_chart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify the operating map identifies the lowest observed consumption."""
+    database_path = tmp_path / "chart-app.db"
+    database = TripDatabase(database_path)
+    database.insert_trip(make_trip())
+    database.insert_trip(
+        TripInput(
+            trip_date=date(2026, 7, 12),
+            distance_km=110.0,
+            avg_speed_kmh=104.0,
+            avg_consumption_l_per_100km=6.2,
+            fuel_price_eur_per_l=1.80,
+        )
+    )
+    app = run_app(database_path, monkeypatch)
+
+    plotly_specs = [
+        json.loads(chart.proto.spec) for chart in app.get("plotly_chart")
+    ]
+    operating_map = next(
+        spec
+        for spec in plotly_specs
+        if spec["layout"].get("title", {}).get("text")
+        == "Observed operating map"
+    )
+    assert operating_map["data"][1]["marker"]["symbol"] == "star"
+    assert not any(
+        "Most efficient observed speed band" in info.value for info in app.info
+    )
