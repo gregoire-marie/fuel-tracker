@@ -101,6 +101,51 @@ def save_trip_from_form(database: TripDatabase) -> None:
     st.session_state["trip_save_message"] = f"Trip #{trip_id} saved."
 
 
+def reset_database_from_form(database: TripDatabase) -> None:
+    """Reset the database after validating the maintenance form.
+
+    Args:
+        database: Trip repository to clear.
+    """
+    if not st.session_state.get("confirm_database_reset", False):
+        st.session_state["database_reset_warning"] = (
+            "Confirm the reset before deleting all trips."
+        )
+        return
+
+    deleted_count = database.reset()
+    st.session_state["database_reset_message"] = (
+        f"Database reset. Deleted {deleted_count} "
+        f"{'trip' if deleted_count == 1 else 'trips'}."
+    )
+
+
+def render_database_controls(database: TripDatabase, has_trips: bool) -> None:
+    """Render guarded database-maintenance controls in the sidebar.
+
+    Args:
+        database: Trip repository affected by maintenance actions.
+        has_trips: Whether the repository currently contains trip records.
+    """
+    with st.sidebar.expander(
+        "Database maintenance", icon=":material/database:"
+    ):
+        st.caption("Permanently delete all trips and restart trip IDs.")
+        with st.form("reset_database", clear_on_submit=True):
+            st.checkbox(
+                "I understand that all trips will be deleted.",
+                key="confirm_database_reset",
+            )
+            st.form_submit_button(
+                "Reset database",
+                icon=":material/delete_forever:",
+                width="stretch",
+                disabled=not has_trips,
+                on_click=reset_database_from_form,
+                args=(database,),
+            )
+
+
 def render_trip_form(database: TripDatabase) -> None:
     """Render the trip-entry form and persist submitted records.
 
@@ -659,7 +704,10 @@ def main() -> None:
     )
 
     database = get_database()
-
+    if reset_message := st.session_state.pop("database_reset_message", None):
+        st.sidebar.success(reset_message)
+    if reset_warning := st.session_state.pop("database_reset_warning", None):
+        st.sidebar.warning(reset_warning)
     all_trips = database.fetch_trips()
 
     if all_trips.empty:
@@ -686,6 +734,7 @@ def main() -> None:
     with log_tab:
         render_trip_log(database, all_trips)
 
+    render_database_controls(database, has_trips=not all_trips.empty)
     st.sidebar.divider()
     st.sidebar.caption(f"Database: {DATABASE_PATH}")
 

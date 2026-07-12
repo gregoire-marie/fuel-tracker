@@ -167,6 +167,19 @@ class TripDatabase:
             if cursor.rowcount == 0:
                 raise KeyError(f"Trip {trip_id} does not exist.")
 
+    def reset(self) -> int:
+        """Delete every trip and restart the trip identifier sequence.
+
+        Returns:
+            Number of deleted trip records.
+        """
+        with self.connect() as connection:
+            cursor = connection.execute("DELETE FROM trips")
+            connection.execute(
+                "DELETE FROM sqlite_sequence WHERE name = ?", ("trips",)
+            )
+            return int(cursor.rowcount)
+
     def fetch_trip(self, trip_id: int) -> dict[str, Any] | None:
         """Fetch one trip by identifier.
 

@@ -130,3 +130,46 @@ def test_trip_form_write_flows(
     assert not app.exception
     assert database.fetch_trip(trip_id) is None
 
+
+def test_database_reset(tmp_path: Path) -> None:
+    """Verify reset clears all trips and restarts identifiers."""
+    database = TripDatabase(tmp_path / "reset.db")
+    database.insert_trip(make_trip())
+    database.insert_trip(make_trip())
+
+    assert database.reset() == 2
+    assert database.fetch_trips().empty
+    assert database.insert_trip(make_trip()) == 1
+
+
+def test_database_reset_flow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify the database reset requires explicit confirmation."""
+    database_path = tmp_path / "reset-app.db"
+    database = TripDatabase(database_path)
+    database.insert_trip(make_trip())
+    app = run_app(database_path, monkeypatch)
+
+    reset_button = next(
+        button for button in app.button if button.label == "Reset database"
+    )
+    reset_button.click().run()
+    assert not app.exception
+    assert len(database.fetch_trips()) == 1
+    assert any("Confirm the reset" in warning.value for warning in app.warning)
+
+    reset_confirmation = next(
+        checkbox
+        for checkbox in app.checkbox
+        if checkbox.label.startswith("I understand that all trips")
+    )
+    reset_confirmation.check().run()
+    reset_button = next(
+        button for button in app.button if button.label == "Reset database"
+    )
+    reset_button.click().run()
+    assert not app.exception
+    assert database.fetch_trips().empty
+    assert any("Database reset" in message.value for message in app.success)
+    assert database.insert_trip(make_trip()) == 1
