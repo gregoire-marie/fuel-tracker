@@ -1,6 +1,9 @@
 # Fuel Trip Tracker
 
-A local Streamlit app that helps store car trips and find the least fuel-consuming speed for your daily commute:
+A local Streamlit app that helps:
+- Store car trips,
+- Visualize your consumption,
+- Find the most economical speed for your daily commute.
 
 ## Demo
 
