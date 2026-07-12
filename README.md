@@ -7,6 +7,10 @@ A local Streamlit application that stores car trips in SQLite and computes:
 - Cost per 100 km
 - Estimated trip duration
 
+## Demo
+
+![Fuel Trip Tracker demo](docs/assets/demo.gif)
+
 The dashboard includes:
 
 - Aggregate distance, fuel, cost, consumption, price, and driving-time metrics
