@@ -113,3 +113,5 @@ AGENTS.md
 # idea folder
 .idea
 results
+
+.DS_Store
